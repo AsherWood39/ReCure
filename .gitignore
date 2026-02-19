@@ -1,0 +1,29 @@
+# Virtual Environment
+venv/
+.venv/
+env/
+bin/
+lib64/
+lib/
+include/
+pypy-cache/
+
+# Python Bytecode
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Data & Notebooks (optional, but keep datasets if they are core to your demo)
+.ipynb_checkpoints/
+Complete Project Structure & Workflow_ AI-Driven A.txt
+walkthrough.md
+
+# Project Generated Output
+feature_importance.png
+confusion_matrix.png
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
