@@ -1,5 +1,17 @@
+'''
+   import pandas as pd: Imports a tool to handle data like a giant, super-powered Excel sheet.
+
+   import numpy as np: A tool for high-level math (like calculating averages or logarithms).
+
+   import re: Short for "Regular Expressions." It's a "search and find" tool that can pull numbers out of messy text (like finding "14" in the phrase "about 14 days").
+
+   import matplotlib... / seaborn...: These are the "artists" of the code; they turn numbers into the charts and graphs you'll show your audience.
+
+   from sklearn...: These are the "Machine Learning" tools. Think of them as the building blocks for the computer's brain.
+'''
 import pandas as pd
-import numpy as np
+import numpy as np  
+import re
 import matplotlib.pyplot as plt
 import seaborn as sns
 from sklearn.pipeline import Pipeline
@@ -43,7 +55,7 @@ def main():
             return df[col].astype(str).str.lower().str.strip()
         return None
 
-    # Group prakriti dataset by dosha and aggregate traits using mode
+    # Group prakriti dataset by dosha and aggregate traits using mode (the most common trait)
     prakriti_summary = (
         prakriti
         .groupby('dosha')
@@ -70,12 +82,25 @@ def main():
     )
 
     # 3. Clinical Feature Engineering (Phase 3)
-    # Define clinical target: treatment_effective
-    # Logic: prognosis is 'good' AND complicaciones is 'none'
-    merged['treatment_effective'] = (
-        (merged['prognosis'].str.lower().str.contains('good', na=False)) & 
-        (merged['complications'].str.lower().str.contains('none', na=False))
-    ).astype(int)
+    # Redefine clinical target: treatment_effective
+    # Logic: Broaden to ensure binary classes for model training
+    def label_target(row):
+        prog = str(row['prognosis']).lower()
+        comp = str(row['complications']).lower()
+        # Positive (1): Mild conditions or those with clear recovery/management paths
+        if any(x in prog for x in ['mild', 'recovery', 'good', 'corrected', 'relief']):
+            return 1
+        # Positive (1): Managed but not lifelong/chronic
+        if 'managed' in prog and not any(x in prog for x in ['chronic', 'lifelong', 'lifetime']):
+            return 1
+        # Negative (0): Chronic, progressive, or severe complications
+        if any(x in prog for x in ['chronic', 'progressive', 'lifelong', 'lifetime', 'failure', 'damage']):
+            return 0
+        if any(x in comp for x in ['failure', 'cancer', 'stroke', 'death']):
+            return 0
+        return 0
+
+    merged['treatment_effective'] = merged.apply(label_target, axis=1)
 
     # Convert ordinal/numeric-like strings to numbers
     severity_map = {
@@ -85,9 +110,25 @@ def main():
     }
     merged['symptom_severity_num'] = merged['symptom_severity'].str.lower().map(severity_map).fillna(2)
 
-    # Log transform for duration_of_treatment (Phase 3)
-    merged['duration_of_treatment_num'] = pd.to_numeric(merged['duration_of_treatment'], errors='coerce')
-    merged['duration_of_treatment_num'] = np.log1p(merged['duration_of_treatment_num'].fillna(merged['duration_of_treatment_num'].median()))
+    # Robust Duration of Treatment Parsing
+    def parse_duration(d):
+        if pd.isna(d): return np.nan
+        d = str(d).lower()
+        if 'lifelong' in d or 'lifetime' in d: return 3650.0  # ~10 years
+        if 'variable' in d: return np.nan
+        nums = re.findall(r'\d+\.?\d*', d)
+        if not nums: return np.nan
+        val = np.mean([float(n) for n in nums])
+        if 'week' in d: val *= 7
+        elif 'month' in d: val *= 30
+        elif 'year' in d: val *= 365
+        return val
+
+    merged['duration_of_treatment_num'] = merged['duration_of_treatment'].apply(parse_duration)
+    # Fill NaN with median before log transformation
+    median_val = merged['duration_of_treatment_num'].median()
+    if pd.isna(median_val): median_val = 7.0 # Default fallback
+    merged['duration_of_treatment_num'] = np.log1p(merged['duration_of_treatment_num'].fillna(median_val))
 
     # Stress levels normalization (0-10 or ordinal)
     stress_map = {'low': 1, 'medium': 2, 'high': 3}
@@ -147,11 +188,17 @@ def main():
 
     # Detailed metrics
     y_pred = rf.predict(X_test)
-    y_pred_proba = rf.predict_proba(X_test)[:, 1]
     
-    print("\n=== Safety-First Classification Report ===")
-    print(classification_report(y_test, y_pred))
-    print("ROC-AUC Score:", roc_auc_score(y_test, y_pred_proba))
+    # Check if we have two classes for ROC-AUC
+    if len(np.unique(y_test)) > 1 and rf.classes_.size > 1:
+        y_pred_proba = rf.predict_proba(X_test)[:, 1]
+        print("\n=== Safety-First Classification Report ===")
+        print(classification_report(y_test, y_pred))
+        print("ROC-AUC Score:", roc_auc_score(y_test, y_pred_proba))
+    else:
+        print("\n=== Safety-First Classification Report ===")
+        print(classification_report(y_test, y_pred, zero_division=0))
+        print("ROC-AUC Score: Not calculable (only one class in test/train set)")
     
     # 5-fold CV focus on F1/Recall
     cv_f1 = cross_val_score(rf, X_processed, y, cv=5, scoring='f1_weighted')
