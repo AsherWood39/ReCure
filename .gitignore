@@ -1,6 +1,7 @@
 # Virtual Environment
 venv/
 .venv/
+.env
 env/
 bin/
 lib64/
@@ -19,8 +20,10 @@ Complete Project Structure & Workflow_ AI-Driven A.txt
 walkthrough.md
 
 # Project Generated Output
-feature_importance.png
-confusion_matrix.png
+model_benchmarking.png
+features.csv
+merged.csv
+model_info/
 
 # IDEs
 .vscode/
