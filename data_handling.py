@@ -30,7 +30,7 @@ def extract_clinical_features_nlp(text):
         "- 'dosha' should be 'Vata', 'Pitta', 'Kapha', or combinations (e.g., 'Vata+Pitta').\n"
         "- 'appetite' should be mapped to: 'Strong, Unbearable', 'Slow but steady', or 'Irregular, Scanty'.\n"
         "- 'symptoms' should be a comma-separated string of identified physical symptoms.\n"
-        "- 'disease' should be the name of the identified condition (if mentioned).\n"
+        "- 'disease' should be the name of the identified condition. IMPORTANT: Map Ayurvedic terms to standardized modern terms if possible (e.g., 'Amlapitta' -> 'Acidity', 'Jvara' -> 'Fever', 'Svasa' -> 'Asthma', 'Pakshaghata' -> 'Stroke').\n"
         "- Use clear summary strings for 'medical_history', 'family_history', and 'allergies'.\n"
         "- If an attribute is missing, use null.\n"
         "Example output: {'body_size': 'Slim', 'appetite': 'Irregular, Scanty', 'dosha': 'Vata', 'symptoms': 'headache, fever', 'disease': 'Vishamajvara', 'medical_history': 'Asthma', 'family_history': 'Diabetes', 'allergies': 'Pollen'}"

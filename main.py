@@ -8,6 +8,29 @@ from data_handling import (
     extract_clinical_features_nlp
 )
 from models import train_model
+import re
+
+# Ayurvedic to Modern Disease Mapping for better dataset lookup
+AYUR_DISEASE_MAP = {
+    'amlapitta': 'acidity',
+    'acid gastritis': 'acidity',
+    'gastritis': 'acidity',
+    'vishamajvara': 'fever',
+    'svasa': 'asthma',
+    'kasa': 'cough',
+    'pakshaghata': 'stroke',
+    'sandhigata vata': 'arthritis',
+    'prameha': 'diabetes',
+    'udararoga': 'digestive disorders'
+}
+
+# Mapping of diseases to irrelevant recommendation categories
+IRRELEVANT_FILTERS = {
+    'acidity': ['speech therapy', 'occupational therapy', 'physical therapy'],
+    'gerd': ['speech therapy', 'occupational therapy', 'physical therapy'],
+    'digestive disorders': ['speech therapy', 'physical therapy'],
+    'arthritis': ['speech therapy']
+}
 
 def get_counterfactual_ITE_recommendations(patient_features, model, stats, all_herbs, top_n=10):
     """
@@ -61,7 +84,7 @@ def get_counterfactual_ITE_recommendations(patient_features, model, stats, all_h
     
     return results, patient_avg_outcome
 
-def rank_column_data_legacy(df, column_name, top_n=10):
+def rank_column_data_legacy(df, column_name, top_n=10, exclusion_terms=None):
     """Fallback similarity-based ranking for Diet/Yoga categories."""
     if column_name not in df.columns or df[column_name].dropna().empty:
         return [], []
@@ -70,6 +93,9 @@ def rank_column_data_legacy(df, column_name, top_n=10):
     items_df['item'] = items_df['item'].str.strip().str.lower()
     
     noisy_terms = ['none specific', 'unknown', 'placeholder', 'none', 'nil', 'tbd']
+    if exclusion_terms:
+        noisy_terms.extend([t.lower() for t in exclusion_terms])
+        
     items_df = items_df[~items_df['item'].str.contains('|'.join(noisy_terms), na=False)]
     items_df = items_df[items_df['item'] != '']
     
@@ -98,7 +124,10 @@ def predict_treatment_causal(patient_data, model, stats, lookup_data, all_herbs)
     herb_recs, patient_baseline_pred = get_counterfactual_ITE_recommendations(patient_baseline, model, stats, all_herbs)
 
     # 3. Holistic Context
-    disease = str(patient_data.get('disease', '')).lower().strip()
+    disease_raw = str(patient_data.get('disease', '')).lower().strip()
+    # Normalize: strip content in parentheses (e.g., "acidity (amlapitta)" -> "acidity")
+    clean_disease = re.sub(r'\(.*\)', '', disease_raw).strip()
+    disease = AYUR_DISEASE_MAP.get(clean_disease, clean_disease)
     primary_dosha = str(patient_data.get('doshas', 'vata')).lower()
     
     relevant_cases = pd.DataFrame()
@@ -109,16 +138,20 @@ def predict_treatment_causal(patient_data, model, stats, lookup_data, all_herbs)
         
     ranking_source = relevant_cases
     if disease:
+        # Search for the mapped disease name in the dataset's disease column
         disease_cases = relevant_cases[relevant_cases['disease'].str.lower().str.contains(disease, na=False)]
         if len(disease_cases) >= 3:
             ranking_source = disease_cases
+            
+    # Get exclusion terms for this disease category
+    exclusions = IRRELEVANT_FILTERS.get(disease, [])
 
     roadmap = {
         "herbs": herb_recs,
         "baseline_outcome": patient_baseline_pred,
-        "diet_lifestyle": rank_column_data_legacy(ranking_source, 'diet_and_lifestyle_recommendations', 10),
-        "yoga_therapy": rank_column_data_legacy(ranking_source, 'yoga_&_physical_therapy', 8),
-        "prevention": rank_column_data_legacy(ranking_source, 'prevention', 8)
+        "diet_lifestyle": rank_column_data_legacy(ranking_source, 'diet_and_lifestyle_recommendations', 10, exclusions),
+        "yoga_therapy": rank_column_data_legacy(ranking_source, 'yoga_&_physical_therapy', 8, exclusions),
+        "prevention": rank_column_data_legacy(ranking_source, 'prevention', 8, exclusions)
     }
 
     return roadmap
